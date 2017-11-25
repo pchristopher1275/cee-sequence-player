@@ -411,7 +411,6 @@ sub rotate_sequence_one_shot {
             ## We push the Note_off_c onto the table out of order. But we'll sort it to make it correct.
             ## Also, we'll make sure the Note_off doesn't make the sequence longer than the specified length.
             my $future_time = $row->[0] + $row->[4];
-
             $future_time = $length unless $future_time <= $length;
             push @n, [$future_time, 'Note_off_c', $row->[2], 0];
         } else {
@@ -865,9 +864,7 @@ sub emit_midi_player_initialize_lattice {
     
     my %need_cg;
     for my $midi (@$midi_slots){
-        if (!$midi->{meta}{nd}){
-            $need_cg{$midi->{choke_group}} = 1;
-        }
+        $need_cg{$midi->{choke_group}} = 1;
     }
 
     for my $cg (sort {$a <=> $b} keys(%need_cg)) {
@@ -879,7 +876,7 @@ sub emit_midi_array {
     my ($stab, $midi_slots) = @_;
     my @all_midi;
     for my $midi (@$midi_slots){
-        if (!$midi->{meta}{em} && !defined($midi->{meta}{nd})){
+        if (!$midi->{meta}{em}){
             for my $row (@{$midi->{midi}}){
                 my ($t, $command, $bb1, $bb2) = @$row;
                 my $ncommand = $command_map{$command};
@@ -893,7 +890,17 @@ sub emit_midi_array {
 
 sub emit_note_on_for_nd {
     my ($stab, $midi) = @_;
-    my $note_on = <<'END';
+
+    my $note_on_const = <<'END';
+            ## NoteOn [[BB1]] [[BB2]]
+            if (%offs[[[CHANNEL]]*128 + [[BB1]]] >= 0)
+                set_midi([[CHANNEL]], $MIDI_COMMAND_NOTE_OFF, [[BB1]], 0)
+            end if
+            set_midi([[CHANNEL]], $MIDI_COMMAND_NOTE_ON, [[BB1]], [[BB2]])
+            %offs[[[CHANNEL]]*128 + [[BB1]]] := $NON_DYNAMIC_CHOKE_GROUP
+END
+
+    my $note_on_vadj = <<'END';
             ## NoteOn [[BB1]] [[BB2]]
             if (%offs[[[CHANNEL]]*128 + [[BB1]]] >= 0)
                 set_midi([[CHANNEL]], $MIDI_COMMAND_NOTE_OFF, [[BB1]], 0)
@@ -905,9 +912,11 @@ sub emit_note_on_for_nd {
             if ($stVelocity > 127)
                 $stVelocity := 127
             end if
+            add_text_line($cons, "PETE " & $stVelocity & " " & [[BB1]] & "    " & $stVelocityDelta)
             set_midi([[CHANNEL]], $MIDI_COMMAND_NOTE_ON, [[BB1]], $stVelocity)
             %offs[[[CHANNEL]]*128 + [[BB1]]] := $NON_DYNAMIC_CHOKE_GROUP
 END
+
     my $cc = <<'END';
             ## CC [[BB1]] [[BB2]]
             %ccs[[[CHANNEL]]*128 + [[BB1]]] := $NON_DYNAMIC_CHOKE_GROUP
@@ -918,10 +927,10 @@ END
         case [[SEQ]]
             [[ALL_STOP]]
             ## Non dynamic NoteOn
-            $stVelocityDelta := real_to_int([[VELOCITY_RADIUS]]*int_to_real($MIDI_BYTE_1-64)/63.0)
+            $stVelocityDelta := real_to_int([[VELOCITY_RADIUS]]*int_to_real($MIDI_BYTE_2-64)/63.0)
+            add_text_line($cons, "velocity " & $MIDI_BYTE_1 & " " & [[VELOCITY_RADIUS]])
             [[NOTE_ON_ND]]
             [[CC_ND]]
-            $stDoinit := -1
 END
     my %stab = (
         CHANNEL         => $midi->{channel},
@@ -940,7 +949,12 @@ END
                 next unless $row->[1] eq 'Note_on_c';
                 $stab{BB1} = $row->[2];
                 $stab{BB2} = $row->[3];
-                print_expand(\%stab, $note_on);
+                if (($midi->{meta}{vr} || 0) == 0) {
+                    print_expand(\%stab, $note_on_const);
+                } else {
+                    print_expand(\%stab, $note_on_vadj);
+                }
+                
             }
         } elsif (/\[\[CC_ND\]\]/){ 
             for my $row (@m){
@@ -1214,7 +1228,8 @@ end on
 on midi_in
     ignore_midi
     $stIndex := $MIDI_CHANNEL*128 + $MIDI_BYTE_1
-    if ($MIDI_COMMAND = $MIDI_COMMAND_NOTE_ON and $MIDI_BYTE_1 > 0)
+    ## add_text_line($cons, "" & $stIndex & "   " & $MIDI_BYTE_1)
+    if ($MIDI_COMMAND = $MIDI_COMMAND_NOTE_ON and $MIDI_BYTE_2 > 0)
         select ($stIndex)
         case -1
             ## Empty
@@ -1228,7 +1243,7 @@ on midi_in
         end select     
     end if
 
-    if ($MIDI_COMMAND = $MIDI_COMMAND_NOTE_OFF or ($MIDI_COMMAND = $MIDI_COMMAND_NOTE_ON and $MIDI_BYTE_1 = 0))
+    if ($MIDI_COMMAND = $MIDI_COMMAND_NOTE_OFF or ($MIDI_COMMAND = $MIDI_COMMAND_NOTE_ON and $MIDI_BYTE_2 = 0))
         select ($stIndex)
         case -1
             ## Empty
@@ -1242,11 +1257,8 @@ end on
 [[META]]
 }
 END
-    ## Count the midi events that will need to go into the %n array. Notice
-    ## we ignore any non-dynamic sequences.
     my $n_midi = 0;
     for my $midi (@$midi_slots){
-        next if defined($midi->{meta}{nd});
         my $mcommands = $midi->{midi};
         $n_midi += 4*scalar(@$mcommands);
     }

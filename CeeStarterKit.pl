@@ -3,7 +3,6 @@ use YAML;
 use Scalar::Util qw(looks_like_number);
 use Getopt::Long;
 use Carp;
-use Data::Dumper;
 use File::Temp qw/ tempfile /;
 my $LINE_LENGTH = 80;
 
@@ -247,11 +246,9 @@ sub execute_label_config {
                 my ($func, @args) = @$op;
                 my %kvs;                
                 my @r = $opFunctions{$func}(\@args, \%kvs);
-                if (defined($kvs{radius})) {
-                    confess "It is illegal to call radius twice for the same slot" 
-                        if defined($velocity_radius);    
-                    $velocity_radius = $kvs{radius};    
-                }
+                confess "It is illegal to call radius twice for the same slot" 
+                    if defined($kvs{radius}) && defined($velocity_radius);
+                $velocity_radius = $kvs{radius} if defined($kvs{radius});
                 push @directives, @r;
             }
             $velocity_radius = $defaultFields{velocity_radius}{def} unless defined($velocity_radius);
@@ -357,6 +354,7 @@ sub slurp_config_file {
         $count++ if defined($cell);
         push @labelConfig, defined($cell) ? $cell : "pass";
     }
+
     _validateAndNormalizeLabelConfig(\@labels, \@labelConfig);
     return (\@labels, \@labelConfig, $defaults)
 }
@@ -553,6 +551,7 @@ $opFunctions{pass} = \&pass;
 sub radius {
     my ($arg_list, $kvs) = @_;
     flag_bad_arg_count("radius", 1, size_first_ref(@_));
+    printf "FOO BAR BAZ $arg_list->[0]\n";
     $kvs->{radius} = $arg_list->[0];
     sanity_radius($kvs->{radius});
     return ();
@@ -706,14 +705,20 @@ sub forths {
 $opFunctions{forths} = \&forths;
 
 sub in_key {
-    flag_bad_arg_count("in_key", 2, size_first_ref(@_));
-    my ($key, $degree) = @{$_[0]};
+    confess "in_key requires 2 or 3 arguments" unless size_first_ref(@_) >= 2 && size_first_ref(@_) <= 3;
+    my ($key, $degree, $velocity) = @{$_[0]};
     $key = note_from_text($key);
     confess "Degree must be > 0" unless $degree > 0;
     confess "Degree too large" unless $degree < @inKeyOffset;
     my $note = $key + $inKeyOffset[$degree-1];
     confess "in_key degree overflow: $note" unless $note < 128;
-    return raw_note($note);
+    if (!defined($velocity)){
+        return raw_note($note);    
+    } else {
+        confess "in_key bad velocity passed to in_key" unless $velocity > 0 && $velocity < 128;
+        return raw_note_and_velocity($note, $velocity);
+    }
+    
 }
 $opFunctions{in_key} = \&in_key;
 

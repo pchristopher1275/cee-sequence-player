@@ -867,37 +867,54 @@ label-config:
    C-2_r1_c1: [['tr_down']]
 BASE_CONFIG
 
-my $midiTemplate = <<'END'
-## Header x, y, z --> where x is the format (always 1), y is nTracks which will be 1 for me, and z is
-##                    the TPQN which for me is always 960
-0, 0, Header, 1, 2, 480
-$CHANNEL, 0, Start_track
-
-Track, Time, Note_on_c, Channel, Note, Velocity
-Send a command to play the specified Note (Middle C is defined as Note number 60; all other notes are relative in the MIDI specification, but most instruments conform to the well-tempered scale) on the given Channel with Velocity (0 to 127). A Note_on_c event with Velocity zero is equivalent to a Note_off_c.
-
-Track, Time, Note_off_c, Channel, Note, Velocity
-Stop playing the specified Note on the given Channel. The Velocity should be zero, but you never know what you'll find in a MIDI file.
-
-Track, Time, Pitch_bend_c, Channel, Value
-Send a pitch bend command of the specified Value to the given Channel. The pitch bend Value is a 14 bit unsigned integer and hence must be in the inclusive range from 0 to 16383. The value 8192 indicates no pitch bend; 0 the lowest pitch bend, and 16383 the highest. The actual change in pitch these values produce is unspecified.
-
-Track, Time, Control_c, Channel, Control_num, Value
-Set the controller Control_num on the given Channel to the specified Value. Control_num and Value must be in the inclusive range 0 to 127. The assignment of Control_num values to effects differs from instrument to instrument. The General MIDI specification defines the meaning of controllers 1 (modulation), 7 (volume), 10 (pan), 11 (expression), and 64 (sustain), but not all instruments and patches respond to these controllers. Instruments which support those capabilities usually assign reverberation to controller 91 and chorus to controller 93.
-
-Track, Time, Program_c, Channel, Program_num
-Switch the specified Channel to program (patch) Program_num, which must be between 0 and 127. The program or patch selects which instrument and associated settings that channel will emulate. The General MIDI specification provides a standard set of instruments, but synthesisers are free to implement other sets of instruments and many permit the user to create custom patches and assign them to program numbers. 
 
 
-Track, Time, Channel_aftertouch_c, Channel, Value
-When a key is held down after being pressed, some synthesisers send the pressure, repeatedly if it varies, until the key is released, but do not distinguish pressure on different keys played simultaneously and held down. This is referred to as “monophonic” or “channel” aftertouch (the latter indicating it applies to the Channel as a whole, not individual note numbers on that channel). The pressure Value (0 to 127) is typically taken to apply to the last note played, but instruments are not guaranteed to behave in this manner.
 
-Track, Time, Poly_aftertouch_c, Channel, Note, Value
-Polyphonic synthesisers (those capable of playing multiple notes simultaneously on a single channel), often provide independent aftertouch for each note. This event specifies the aftertouch pressure Value (0 to 127) for the specified Note on the given Channel.
+my $playMidiFile = <<'PLAY_MIDI_END';
+declare ui_file_selector $fsMIDISelector
+    set_control_par_str(get_ui_id($fsMIDISelector),$CONTROL_PAR_BASEPATH,@midifolder)
+    set_control_par_str(get_ui_id($fsMIDISelector),$CONTROL_PAR_FILEPATH,@midifolder)
+    set_control_par(get_ui_id($fsMIDISelector),$CONTROL_PAR_FILE_TYPE,$NI_FILE_TYPE_MIDI)
+    set_control_par(get_ui_id($fsMIDISelector),$CONTROL_PAR_COLUMN_WIDTH,120)
+    set_control_par(get_ui_id($fsMIDISelector),$CONTROL_PAR_HEIGHT,307)
+    set_control_par(get_ui_id($fsMIDISelector),$CONTROL_PAR_WIDTH,500)
+    $fsMIDISelector->pos_x:= 70
+    $fsMIDISelector->pos_y:= 90
 
-$CHANNEL, 4800, End_track
-0, 0, End_of_file
-END
+declare ui_label $drag_label(1,1)
+    $drag_label->pos_x:= 50
+    $drag_label->pos_y:= 436
+    $drag_label->height:= 30
+    $drag_label->width:= 30
+    $drag_label->text:=""
+    $drag_label->picture:="dragTarget"
+    $drag_label->dnd_behaviour:= 1
 
+function play_midi_file
+    $file_playing := $TRUE
+    $total_wait_time := 0
+    mf_get_first(-1)
+    while (mf_get_command() # $EOF) and ($stop_playing = $FALSE)
+
+        $wait_time := mf_get_pos() - $total_wait_time
+        if $wait_time > 0
+            wait(ticks_to_ms($wait_time))
+        end if
+        $total_wait_time := $total_wait_time + $wait_time
+        if (mf_get_command() = $MIDI_COMMAND_NOTE_ON) and (mf_get_byte_two() > 0)
+            {its a valid note on...}
+            $my_id := play_note(mf_get_byte_one(),mf_get_byte_two(), 0,0)
+            %play_ids[mf_get_byte_one()] := $my_id
+        end if
+        if (mf_get_command() = $MIDI_COMMAND_NOTE_OFF)
+            {its a valid note off...}
+            note_off(%play_ids[mf_get_byte_one()])
+        end if
+        mf_get_next(-1)
+    end while
+    $file_playing := $FALSE
+
+end function
+PLAY_MIDI_END
 
 _main();
