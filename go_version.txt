@@ -1,0 +1,819 @@
+on init
+    declare const $OO := $MIDI_COMMAND_NOTE_ON
+    declare const $XX := $MIDI_COMMAND_NOTE_OFF
+    declare const $PP := $MIDI_COMMAND_PITCH_BEND
+    declare const $CC := $MIDI_COMMAND_CC
+
+    declare const $PLAYER_QUEUE   := 1
+    declare const $PLAYER_DONE    := 2
+    declare const $PLAYER_RUNNING := 3
+    declare const $PLAYER_CLEAR   := 4
+
+    declare const $CUSTOM_COMMAND_ENDGROUP := 256
+    declare const $CUSTOM_COMMAND_CYCLE    := 257
+    declare const $NO_CHOKE_GROUP          := -1
+    declare const $NON_DYNAMIC_CHOKE_GROUP := 20
+    declare $long_time                     := 1000*1000*1000
+    declare %n[200] := ( ...
+        0, $OO, 91, 81, 1920, $XX, 91, 0, 1920, $OO, 93, 81, 3840, $XX, 93, 0, ...
+        3840, $OO, 89, 81, 5760, $XX, 89, 0, 5760, $OO, 77, 81, 7680, $XX, 77, 0, ...
+        7680, $OO, 84, 81, 9600, $XX, 84, 0, 0, $OO, 67, 81, 1920, $XX, 67, 0, ...
+        1920, $OO, 69, 81, 3840, $XX, 69, 0, 3840, $OO, 65, 81, 5760, $XX, 65, 0, ...
+        5760, $OO, 53, 81, 7680, $XX, 53, 0, 7680, $OO, 60, 81, 9600, $XX, 60, 0, ...
+        0, $OO, 79, 81, 1920, $XX, 79, 0, 1920, $OO, 81, 81, 3840, $XX, 81, 0, ...
+        3840, $OO, 77, 81, 5760, $XX, 77, 0, 5760, $OO, 65, 81, 7680, $XX, 65, 0, ...
+        7680, $OO, 72, 81, 9600, $XX, 72, 0, 0, $OO, 91, 81, 1920, $XX, 91, 0, ...
+        1920, $OO, 93, 81, 3840, $XX, 93, 0, 3840, $OO, 89, 81, 5760, $XX, 89, 0, ...
+        5760, $OO, 77, 81, 7680, $XX, 77, 0, 7680, $OO, 84, 81, 9600, $XX, 84, 0, ...
+        0, $OO, 91, 81, 1920, $XX, 91, 0, 1920, $OO, 93, 81, 3840, $XX, 93, 0, ...
+        3840, $OO, 89, 81, 5760, $XX, 89, 0, 5760, $OO, 77, 81, 7680, $XX, 77, 0, ...
+        7680, $OO, 84, 81, 9600, $XX, 84, 0    )
+    declare $master_clock_start := 0
+ 
+    declare %offs[128*16]          := ($NO_CHOKE_GROUP)
+    declare %ccs[128*16]           := ($NO_CHOKE_GROUP)
+    declare %background_cc[128*16] := (0)
+    declare %pitch_bend[16]        := ($NO_CHOKE_GROUP)
+    declare %use_master_clock[16]  := (0)
+    declare %callback[16]          := (0)
+    declare %state[16]             := ($PLAYER_DONE)
+    declare $bend_center_msb := msb(8192) {Should be 64}
+    declare $bend_center_lsb := lsb(8192) {Should be 0}
+    declare $stDoinit        := 0
+    declare $stJ
+    declare $stVelocity
+    declare $stVelocityDelta
+    declare $stIndex
+ 
+    {# Midi player variables }
+    declare %previous_channel[16] := (-1)
+    declare %channel[16]
+    declare %mark[16]
+    declare %ticks[16]
+    declare %loop[16]
+    declare %needsinit[16] := (1)
+    declare %seq_length_ticks[16]
+    declare %i[16]
+    declare %start_time[16]
+    declare %end[16]
+    declare %start[16]
+    declare ?seq_delta[16]
+    declare %seq_decay_time[16]
+    declare %trigger_held[16]
+    declare %is_endgroup[16]
+ 
+    declare ui_label $cons (6,6)
+    { # Add text to the console with add_text_line($cons, <TEXT>) }
+ 
+    message("")
+end on
+
+on midi_in
+    ignore_midi
+    $stIndex := $MIDI_CHANNEL*128 + $MIDI_BYTE_1
+    if ($MIDI_COMMAND = $MIDI_COMMAND_NOTE_ON and $MIDI_BYTE_1 > 0)
+        select ($stIndex)
+        case -1
+            {# Empty }
+        case 12
+            {# This is a sequence launch }
+            %i[0]                := 0
+            %start[0]            := 0
+            %end[0]              := 10
+            %state[0]            := $PLAYER_QUEUE
+            %channel[0]          := 0
+                        
+            %seq_length_ticks[0] := 9601
+            %trigger_held[0]     := 12
+            %is_endgroup[0]      := 0
+            
+            %use_master_clock[0] := 0
+            ?seq_delta[0]        := 10.0*int_to_real($MIDI_BYTE_1-64)/63.0
+            %seq_decay_time[0]   := 1920
+            
+            $stDoinit := -1
+            if (%needsinit[0] = 1)
+                $stDoinit  := 0
+                %needsinit[0] := 0
+            else 
+                stop_wait(%callback[0], 0)
+            end if
+            {# END case 12 }
+        case 13
+            {# This is a sequence launch }
+            %i[0]                := 10
+            %start[0]            := 10
+            %end[0]              := 20
+            %state[0]            := $PLAYER_QUEUE
+            %channel[0]          := 0
+                        
+            %seq_length_ticks[0] := 9601
+            %trigger_held[0]     := 13
+            %is_endgroup[0]      := 0
+            
+            %use_master_clock[0] := 0
+            ?seq_delta[0]        := 10.0*int_to_real($MIDI_BYTE_1-64)/63.0
+            %seq_decay_time[0]   := 1920
+            
+            $stDoinit := -1
+            if (%needsinit[0] = 1)
+                $stDoinit  := 0
+                %needsinit[0] := 0
+            else 
+                stop_wait(%callback[0], 0)
+            end if
+            {# END case 13 }
+        case 14
+            {# This is a sequence launch }
+            %i[0]                := 20
+            %start[0]            := 20
+            %end[0]              := 30
+            %state[0]            := $PLAYER_QUEUE
+            %channel[0]          := 0
+                        
+            %seq_length_ticks[0] := 9601
+            %trigger_held[0]     := 14
+            %is_endgroup[0]      := 0
+            
+            %use_master_clock[0] := 0
+            ?seq_delta[0]        := 10.0*int_to_real($MIDI_BYTE_1-64)/63.0
+            %seq_decay_time[0]   := 1920
+            
+            $stDoinit := -1
+            if (%needsinit[0] = 1)
+                $stDoinit  := 0
+                %needsinit[0] := 0
+            else 
+                stop_wait(%callback[0], 0)
+            end if
+            {# END case 14 }
+        case 15
+            {# Non dynamic NoteOn }
+            $stVelocityDelta := real_to_int(10*int_to_real($MIDI_BYTE_1-64)/63.0)
+            {# NoteOn 79 81 }
+            if (%offs[0*128 + 79] >= 0)
+                set_midi(0, $MIDI_COMMAND_NOTE_OFF, 79, 0)
+            end if
+            $stVelocity := 81 + $stVelocityDelta
+            if ($stVelocity < 1)
+                $stVelocity := 1
+            end if
+            if ($stVelocity > 127)
+                $stVelocity := 127
+            end if
+            set_midi(0, $MIDI_COMMAND_NOTE_ON, 79, $stVelocity)
+            %offs[0*128 + 79] := $NON_DYNAMIC_CHOKE_GROUP
+            {# NoteOn 81 81 }
+            if (%offs[0*128 + 81] >= 0)
+                set_midi(0, $MIDI_COMMAND_NOTE_OFF, 81, 0)
+            end if
+            $stVelocity := 81 + $stVelocityDelta
+            if ($stVelocity < 1)
+                $stVelocity := 1
+            end if
+            if ($stVelocity > 127)
+                $stVelocity := 127
+            end if
+            set_midi(0, $MIDI_COMMAND_NOTE_ON, 81, $stVelocity)
+            %offs[0*128 + 81] := $NON_DYNAMIC_CHOKE_GROUP
+            {# NoteOn 77 81 }
+            if (%offs[0*128 + 77] >= 0)
+                set_midi(0, $MIDI_COMMAND_NOTE_OFF, 77, 0)
+            end if
+            $stVelocity := 81 + $stVelocityDelta
+            if ($stVelocity < 1)
+                $stVelocity := 1
+            end if
+            if ($stVelocity > 127)
+                $stVelocity := 127
+            end if
+            set_midi(0, $MIDI_COMMAND_NOTE_ON, 77, $stVelocity)
+            %offs[0*128 + 77] := $NON_DYNAMIC_CHOKE_GROUP
+            {# NoteOn 65 81 }
+            if (%offs[0*128 + 65] >= 0)
+                set_midi(0, $MIDI_COMMAND_NOTE_OFF, 65, 0)
+            end if
+            $stVelocity := 81 + $stVelocityDelta
+            if ($stVelocity < 1)
+                $stVelocity := 1
+            end if
+            if ($stVelocity > 127)
+                $stVelocity := 127
+            end if
+            set_midi(0, $MIDI_COMMAND_NOTE_ON, 65, $stVelocity)
+            %offs[0*128 + 65] := $NON_DYNAMIC_CHOKE_GROUP
+            {# NoteOn 72 81 }
+            if (%offs[0*128 + 72] >= 0)
+                set_midi(0, $MIDI_COMMAND_NOTE_OFF, 72, 0)
+            end if
+            $stVelocity := 81 + $stVelocityDelta
+            if ($stVelocity < 1)
+                $stVelocity := 1
+            end if
+            if ($stVelocity > 127)
+                $stVelocity := 127
+            end if
+            set_midi(0, $MIDI_COMMAND_NOTE_ON, 72, $stVelocity)
+            %offs[0*128 + 72] := $NON_DYNAMIC_CHOKE_GROUP
+            $stDoinit := -1
+        case 16
+            {# This is a sequence launch }
+            %i[1]                := 30
+            %start[1]            := 30
+            %end[1]              := 40
+            %state[1]            := $PLAYER_QUEUE
+            %channel[1]          := 0
+                        
+            %seq_length_ticks[1] := 9601
+            %trigger_held[1]     := 16
+            %is_endgroup[1]      := 0
+            
+            %use_master_clock[1] := 0
+            ?seq_delta[1]        := 10.0*int_to_real($MIDI_BYTE_1-64)/63.0
+            %seq_decay_time[1]   := 1920
+            
+            $stDoinit := -1
+            if (%needsinit[1] = 1)
+                $stDoinit  := 1
+                %needsinit[1] := 0
+            else 
+                stop_wait(%callback[1], 0)
+            end if
+            {# END case 16 }
+        case 17
+            {# This is a sequence launch }
+            %i[2]                := 40
+            %start[2]            := 40
+            %end[2]              := 50
+            %state[2]            := $PLAYER_QUEUE
+            %channel[2]          := 0
+                        
+            %seq_length_ticks[2] := 9601
+            %trigger_held[2]     := 17
+            %is_endgroup[2]      := 0
+            
+            %use_master_clock[2] := 0
+            ?seq_delta[2]        := 30.0*int_to_real($MIDI_BYTE_1-64)/63.0
+            %seq_decay_time[2]   := 1920
+            
+            $stDoinit := -1
+            if (%needsinit[2] = 1)
+                $stDoinit  := 2
+                %needsinit[2] := 0
+            else 
+                stop_wait(%callback[2], 0)
+            end if
+            {# END case 17 }
+        end select
+ 
+        select ($stDoinit)
+        case -1
+            {# Empty }
+        case 0
+            %callback[0] := $NI_CALLBACK_ID
+            while (1 = 1)
+                if (%state[0] = $PLAYER_QUEUE or %state[0] = $PLAYER_CLEAR)  
+                    {# Clear ChokeGroup if needed     }
+                    if (%previous_channel[0] >= 0)
+                        $stJ := 0
+                        while ($stJ < 128)
+                            if (%offs[%previous_channel[0]*128 + $stJ] = 0)
+                                %offs[%previous_channel[0]*128 + $stJ] := $NO_CHOKE_GROUP
+                                set_midi(%previous_channel[0], $MIDI_COMMAND_NOTE_OFF, $stJ, 0)
+                            end if
+                            if (%ccs[%previous_channel[0]*128 + $stJ] = 0)
+                                %ccs[%previous_channel[0]*128 + $stJ] := $NO_CHOKE_GROUP
+                                set_midi(%previous_channel[0], $MIDI_COMMAND_CC, $stJ, ...
+                                         %background_cc[%previous_channel[0]*128 + $stJ])
+                            end if
+                            inc($stJ)                    
+                        end while
+                        if (%pitch_bend[%previous_channel[0]] = 0)
+                            %pitch_bend[%previous_channel[0]] := $NO_CHOKE_GROUP
+                            set_midi(%previous_channel[0], $MIDI_COMMAND_PITCH_BEND, $bend_center_msb, $bend_center_lsb)
+                        end if
+                    end if
+                    
+                    if (%state[0] = $PLAYER_CLEAR)
+                        %state[0] := $PLAYER_DONE
+                    end if
+                end if
+        
+                if (%state[0] = $PLAYER_QUEUE)  
+                    %previous_channel[0] := %channel[0]
+                    %state[0]          := $PLAYER_RUNNING
+                    if (%use_master_clock[0] = 1)
+                        if ($master_clock_start = 0)
+                            $master_clock_start := $ENGINE_UPTIME
+                        end if
+                        %start_time[0] := $master_clock_start
+                        %ticks[0] := real_to_int( 960.0*1000.0 ...
+                                                   * int_to_real($ENGINE_UPTIME-%start_time[0]) ...
+                                                   / int_to_real($DURATION_QUARTER))
+                        %loop[0]  := %ticks[0]/%seq_length_ticks[0]
+                        {# Fast forward }
+                        while (%i[0] < %end[0] and %n[4*%i[0]] + %loop[0]*%seq_length_ticks[0] < %ticks[0])
+                            inc(%i[0])
+                        end while
+                        if (%i[0] >= %end[0])
+                            {# I don%t[0] think that this should ever happen, b/c there should always be a CYCLE instruction }
+                            {# that is at time $seq_length_ticks. But this is purely defensive. }
+                            inc(%loop[0])
+                            %i[0] := %start[0]
+                        end if
+                    else
+                        %start_time[0] := $ENGINE_UPTIME
+                        %loop[0]     := 0
+                    end if
+                    
+                    if (%i[0] >= %end[0])
+                        {# The sequence is empty }
+                        %state[0] := $PLAYER_DONE
+                    end if
+                end if
+        
+                if (%state[0] = $PLAYER_RUNNING)  
+                    {# Player wait if needed }
+                    %ticks[0] := real_to_int( 960.0*1000.0 ...
+                                               * int_to_real($ENGINE_UPTIME-%start_time[0]) ...
+                                               / int_to_real($DURATION_QUARTER))
+                    %mark[0]  := %n[4*%i[0]] + %loop[0]*%seq_length_ticks[0]
+                    if (%mark[0] > %ticks[0])
+                        wait_ticks(%mark[0] - %ticks[0])
+                    end if
+                end if
+        
+                if (%state[0] = $PLAYER_RUNNING)  
+                    {# Player plays notes if needed         }
+                    select (%n[4*%i[0]+1])
+                        case $MIDI_COMMAND_NOTE_ON
+                            if (%offs[%channel[0]*128 + %n[4*%i[0]+2]] >= 0)
+                                set_midi(%channel[0], $MIDI_COMMAND_NOTE_OFF, %n[4*%i[0]+2], 0)
+                            end if
+                            $stVelocity := %n[4*%i[0]+3]
+                            {# NOTE: $mark does not need to be adjusted by $loop*$seq_length_ticks b/c currently we only }
+                            {# support velocity adjustment for single shots (i.e. not using master clock), so $loop is  }
+                            {# always 0 }
+                            if (%mark[0] < %seq_decay_time[0])
+                                $stVelocity := $stVelocity + real_to_int(?seq_delta[0] ...
+                                                                        * int_to_real(%seq_decay_time[0] - %mark[0]) ...
+                                                                        / int_to_real(%seq_decay_time[0]))
+                                if ($stVelocity < 1)
+                                    $stVelocity := 1
+                                end if
+                                if ($stVelocity  > 127)
+                                    $stVelocity := 127 
+                                end if                           
+                            end if  
+                            set_midi(%channel[0], %n[4*%i[0]+1], %n[4*%i[0]+2], $stVelocity)
+                            %offs[%channel[0]*128 + %n[4*%i[0]+2]] := 0
+                            {# Increment the playhead }
+                            inc(%i[0])
+                            if (%i[0] >= %end[0])
+                                %state[0] := $PLAYER_DONE
+                            end if
+                    
+                        case $MIDI_COMMAND_NOTE_OFF
+                            if (%is_endgroup[0] = 0)
+                                set_midi(%channel[0], %n[4*%i[0]+1], %n[4*%i[0]+2], 0)
+                                %offs[%channel[0]*128 + %n[4*%i[0]+2]] := $NO_CHOKE_GROUP
+                            end if
+                            {# Increment the playhead }
+                            inc(%i[0])
+                            if (%i[0] >= %end[0])
+                                %state[0] := $PLAYER_DONE
+                            end if
+                    
+                        case $MIDI_COMMAND_CC
+                            set_midi(%channel[0], %n[4*%i[0]+1], %n[4*%i[0]+2], %n[4*%i[0]+3])
+                            %ccs[%channel[0]*128 + %n[4*%i[0]+2]] := 0
+                            {# Increment the playhead }
+                            inc(%i[0])
+                            if (%i[0] >= %end[0])
+                                %state[0] := $PLAYER_DONE
+                            end if
+                    
+                        case $MIDI_COMMAND_PITCH_BEND
+                            set_midi(%channel[0], %n[4*%i[0]+1], %n[4*%i[0]+2], %n[4*%i[0]+3])
+                            %pitch_bend[%channel[0]] := 0
+                            {# Increment the playhead }
+                            inc(%i[0])
+                            if (%i[0] >= %end[0])
+                                %state[0] := $PLAYER_DONE
+                            end if
+                    
+                        case $CUSTOM_COMMAND_CYCLE
+                            inc(%loop[0])
+                            %i[0] := %start[0]                 
+                            if (%i[0] >= %end[0])
+                                %state[0] := $PLAYER_DONE
+                            end if
+                    
+                        case $CUSTOM_COMMAND_ENDGROUP
+                            if (%trigger_held[0] >= 0)
+                                %is_endgroup[0] := 1
+                            end if
+                    end select
+                end if
+        
+                while (%state[0] = $PLAYER_DONE)
+                    {# Player waits until new sequence is selected }
+                    wait($long_time)
+                end while
+            end while
+        case 1
+            %callback[1] := $NI_CALLBACK_ID
+            while (1 = 1)
+                if (%state[1] = $PLAYER_QUEUE or %state[1] = $PLAYER_CLEAR)  
+                    {# Clear ChokeGroup if needed     }
+                    if (%previous_channel[1] >= 0)
+                        $stJ := 0
+                        while ($stJ < 128)
+                            if (%offs[%previous_channel[1]*128 + $stJ] = 1)
+                                %offs[%previous_channel[1]*128 + $stJ] := $NO_CHOKE_GROUP
+                                set_midi(%previous_channel[1], $MIDI_COMMAND_NOTE_OFF, $stJ, 0)
+                            end if
+                            if (%ccs[%previous_channel[1]*128 + $stJ] = 1)
+                                %ccs[%previous_channel[1]*128 + $stJ] := $NO_CHOKE_GROUP
+                                set_midi(%previous_channel[1], $MIDI_COMMAND_CC, $stJ, ...
+                                         %background_cc[%previous_channel[1]*128 + $stJ])
+                            end if
+                            inc($stJ)                    
+                        end while
+                        if (%pitch_bend[%previous_channel[1]] = 1)
+                            %pitch_bend[%previous_channel[1]] := $NO_CHOKE_GROUP
+                            set_midi(%previous_channel[1], $MIDI_COMMAND_PITCH_BEND, $bend_center_msb, $bend_center_lsb)
+                        end if
+                    end if
+                    
+                    if (%state[1] = $PLAYER_CLEAR)
+                        %state[1] := $PLAYER_DONE
+                    end if
+                end if
+        
+                if (%state[1] = $PLAYER_QUEUE)  
+                    %previous_channel[1] := %channel[1]
+                    %state[1]          := $PLAYER_RUNNING
+                    if (%use_master_clock[1] = 1)
+                        if ($master_clock_start = 0)
+                            $master_clock_start := $ENGINE_UPTIME
+                        end if
+                        %start_time[1] := $master_clock_start
+                        %ticks[1] := real_to_int( 960.0*1000.0 ...
+                                                   * int_to_real($ENGINE_UPTIME-%start_time[1]) ...
+                                                   / int_to_real($DURATION_QUARTER))
+                        %loop[1]  := %ticks[1]/%seq_length_ticks[1]
+                        {# Fast forward }
+                        while (%i[1] < %end[1] and %n[4*%i[1]] + %loop[1]*%seq_length_ticks[1] < %ticks[1])
+                            inc(%i[1])
+                        end while
+                        if (%i[1] >= %end[1])
+                            {# I don%t[1] think that this should ever happen, b/c there should always be a CYCLE instruction }
+                            {# that is at time $seq_length_ticks. But this is purely defensive. }
+                            inc(%loop[1])
+                            %i[1] := %start[1]
+                        end if
+                    else
+                        %start_time[1] := $ENGINE_UPTIME
+                        %loop[1]     := 0
+                    end if
+                    
+                    if (%i[1] >= %end[1])
+                        {# The sequence is empty }
+                        %state[1] := $PLAYER_DONE
+                    end if
+                end if
+        
+                if (%state[1] = $PLAYER_RUNNING)  
+                    {# Player wait if needed }
+                    %ticks[1] := real_to_int( 960.0*1000.0 ...
+                                               * int_to_real($ENGINE_UPTIME-%start_time[1]) ...
+                                               / int_to_real($DURATION_QUARTER))
+                    %mark[1]  := %n[4*%i[1]] + %loop[1]*%seq_length_ticks[1]
+                    if (%mark[1] > %ticks[1])
+                        wait_ticks(%mark[1] - %ticks[1])
+                    end if
+                end if
+        
+                if (%state[1] = $PLAYER_RUNNING)  
+                    {# Player plays notes if needed         }
+                    select (%n[4*%i[1]+1])
+                        case $MIDI_COMMAND_NOTE_ON
+                            if (%offs[%channel[1]*128 + %n[4*%i[1]+2]] >= 0)
+                                set_midi(%channel[1], $MIDI_COMMAND_NOTE_OFF, %n[4*%i[1]+2], 0)
+                            end if
+                            $stVelocity := %n[4*%i[1]+3]
+                            {# NOTE: $mark does not need to be adjusted by $loop*$seq_length_ticks b/c currently we only }
+                            {# support velocity adjustment for single shots (i.e. not using master clock), so $loop is  }
+                            {# always 0 }
+                            if (%mark[1] < %seq_decay_time[1])
+                                $stVelocity := $stVelocity + real_to_int(?seq_delta[1] ...
+                                                                        * int_to_real(%seq_decay_time[1] - %mark[1]) ...
+                                                                        / int_to_real(%seq_decay_time[1]))
+                                if ($stVelocity < 1)
+                                    $stVelocity := 1
+                                end if
+                                if ($stVelocity  > 127)
+                                    $stVelocity := 127 
+                                end if                           
+                            end if  
+                            set_midi(%channel[1], %n[4*%i[1]+1], %n[4*%i[1]+2], $stVelocity)
+                            %offs[%channel[1]*128 + %n[4*%i[1]+2]] := 1
+                            {# Increment the playhead }
+                            inc(%i[1])
+                            if (%i[1] >= %end[1])
+                                %state[1] := $PLAYER_DONE
+                            end if
+                    
+                        case $MIDI_COMMAND_NOTE_OFF
+                            if (%is_endgroup[1] = 0)
+                                set_midi(%channel[1], %n[4*%i[1]+1], %n[4*%i[1]+2], 0)
+                                %offs[%channel[1]*128 + %n[4*%i[1]+2]] := $NO_CHOKE_GROUP
+                            end if
+                            {# Increment the playhead }
+                            inc(%i[1])
+                            if (%i[1] >= %end[1])
+                                %state[1] := $PLAYER_DONE
+                            end if
+                    
+                        case $MIDI_COMMAND_CC
+                            set_midi(%channel[1], %n[4*%i[1]+1], %n[4*%i[1]+2], %n[4*%i[1]+3])
+                            %ccs[%channel[1]*128 + %n[4*%i[1]+2]] := 1
+                            {# Increment the playhead }
+                            inc(%i[1])
+                            if (%i[1] >= %end[1])
+                                %state[1] := $PLAYER_DONE
+                            end if
+                    
+                        case $MIDI_COMMAND_PITCH_BEND
+                            set_midi(%channel[1], %n[4*%i[1]+1], %n[4*%i[1]+2], %n[4*%i[1]+3])
+                            %pitch_bend[%channel[1]] := 1
+                            {# Increment the playhead }
+                            inc(%i[1])
+                            if (%i[1] >= %end[1])
+                                %state[1] := $PLAYER_DONE
+                            end if
+                    
+                        case $CUSTOM_COMMAND_CYCLE
+                            inc(%loop[1])
+                            %i[1] := %start[1]                 
+                            if (%i[1] >= %end[1])
+                                %state[1] := $PLAYER_DONE
+                            end if
+                    
+                        case $CUSTOM_COMMAND_ENDGROUP
+                            if (%trigger_held[1] >= 0)
+                                %is_endgroup[1] := 1
+                            end if
+                    end select
+                end if
+        
+                while (%state[1] = $PLAYER_DONE)
+                    {# Player waits until new sequence is selected }
+                    wait($long_time)
+                end while
+            end while
+        case 2
+            %callback[2] := $NI_CALLBACK_ID
+            while (1 = 1)
+                if (%state[2] = $PLAYER_QUEUE or %state[2] = $PLAYER_CLEAR)  
+                    {# Clear ChokeGroup if needed     }
+                    if (%previous_channel[2] >= 0)
+                        $stJ := 0
+                        while ($stJ < 128)
+                            if (%offs[%previous_channel[2]*128 + $stJ] = 2)
+                                %offs[%previous_channel[2]*128 + $stJ] := $NO_CHOKE_GROUP
+                                set_midi(%previous_channel[2], $MIDI_COMMAND_NOTE_OFF, $stJ, 0)
+                            end if
+                            if (%ccs[%previous_channel[2]*128 + $stJ] = 2)
+                                %ccs[%previous_channel[2]*128 + $stJ] := $NO_CHOKE_GROUP
+                                set_midi(%previous_channel[2], $MIDI_COMMAND_CC, $stJ, ...
+                                         %background_cc[%previous_channel[2]*128 + $stJ])
+                            end if
+                            inc($stJ)                    
+                        end while
+                        if (%pitch_bend[%previous_channel[2]] = 2)
+                            %pitch_bend[%previous_channel[2]] := $NO_CHOKE_GROUP
+                            set_midi(%previous_channel[2], $MIDI_COMMAND_PITCH_BEND, $bend_center_msb, $bend_center_lsb)
+                        end if
+                    end if
+                    
+                    if (%state[2] = $PLAYER_CLEAR)
+                        %state[2] := $PLAYER_DONE
+                    end if
+                end if
+        
+                if (%state[2] = $PLAYER_QUEUE)  
+                    %previous_channel[2] := %channel[2]
+                    %state[2]          := $PLAYER_RUNNING
+                    if (%use_master_clock[2] = 1)
+                        if ($master_clock_start = 0)
+                            $master_clock_start := $ENGINE_UPTIME
+                        end if
+                        %start_time[2] := $master_clock_start
+                        %ticks[2] := real_to_int( 960.0*1000.0 ...
+                                                   * int_to_real($ENGINE_UPTIME-%start_time[2]) ...
+                                                   / int_to_real($DURATION_QUARTER))
+                        %loop[2]  := %ticks[2]/%seq_length_ticks[2]
+                        {# Fast forward }
+                        while (%i[2] < %end[2] and %n[4*%i[2]] + %loop[2]*%seq_length_ticks[2] < %ticks[2])
+                            inc(%i[2])
+                        end while
+                        if (%i[2] >= %end[2])
+                            {# I don%t[2] think that this should ever happen, b/c there should always be a CYCLE instruction }
+                            {# that is at time $seq_length_ticks. But this is purely defensive. }
+                            inc(%loop[2])
+                            %i[2] := %start[2]
+                        end if
+                    else
+                        %start_time[2] := $ENGINE_UPTIME
+                        %loop[2]     := 0
+                    end if
+                    
+                    if (%i[2] >= %end[2])
+                        {# The sequence is empty }
+                        %state[2] := $PLAYER_DONE
+                    end if
+                end if
+        
+                if (%state[2] = $PLAYER_RUNNING)  
+                    {# Player wait if needed }
+                    %ticks[2] := real_to_int( 960.0*1000.0 ...
+                                               * int_to_real($ENGINE_UPTIME-%start_time[2]) ...
+                                               / int_to_real($DURATION_QUARTER))
+                    %mark[2]  := %n[4*%i[2]] + %loop[2]*%seq_length_ticks[2]
+                    if (%mark[2] > %ticks[2])
+                        wait_ticks(%mark[2] - %ticks[2])
+                    end if
+                end if
+        
+                if (%state[2] = $PLAYER_RUNNING)  
+                    {# Player plays notes if needed         }
+                    select (%n[4*%i[2]+1])
+                        case $MIDI_COMMAND_NOTE_ON
+                            if (%offs[%channel[2]*128 + %n[4*%i[2]+2]] >= 0)
+                                set_midi(%channel[2], $MIDI_COMMAND_NOTE_OFF, %n[4*%i[2]+2], 0)
+                            end if
+                            $stVelocity := %n[4*%i[2]+3]
+                            {# NOTE: $mark does not need to be adjusted by $loop*$seq_length_ticks b/c currently we only }
+                            {# support velocity adjustment for single shots (i.e. not using master clock), so $loop is  }
+                            {# always 0 }
+                            if (%mark[2] < %seq_decay_time[2])
+                                $stVelocity := $stVelocity + real_to_int(?seq_delta[2] ...
+                                                                        * int_to_real(%seq_decay_time[2] - %mark[2]) ...
+                                                                        / int_to_real(%seq_decay_time[2]))
+                                if ($stVelocity < 1)
+                                    $stVelocity := 1
+                                end if
+                                if ($stVelocity  > 127)
+                                    $stVelocity := 127 
+                                end if                           
+                            end if  
+                            set_midi(%channel[2], %n[4*%i[2]+1], %n[4*%i[2]+2], $stVelocity)
+                            %offs[%channel[2]*128 + %n[4*%i[2]+2]] := 2
+                            {# Increment the playhead }
+                            inc(%i[2])
+                            if (%i[2] >= %end[2])
+                                %state[2] := $PLAYER_DONE
+                            end if
+                    
+                        case $MIDI_COMMAND_NOTE_OFF
+                            if (%is_endgroup[2] = 0)
+                                set_midi(%channel[2], %n[4*%i[2]+1], %n[4*%i[2]+2], 0)
+                                %offs[%channel[2]*128 + %n[4*%i[2]+2]] := $NO_CHOKE_GROUP
+                            end if
+                            {# Increment the playhead }
+                            inc(%i[2])
+                            if (%i[2] >= %end[2])
+                                %state[2] := $PLAYER_DONE
+                            end if
+                    
+                        case $MIDI_COMMAND_CC
+                            set_midi(%channel[2], %n[4*%i[2]+1], %n[4*%i[2]+2], %n[4*%i[2]+3])
+                            %ccs[%channel[2]*128 + %n[4*%i[2]+2]] := 2
+                            {# Increment the playhead }
+                            inc(%i[2])
+                            if (%i[2] >= %end[2])
+                                %state[2] := $PLAYER_DONE
+                            end if
+                    
+                        case $MIDI_COMMAND_PITCH_BEND
+                            set_midi(%channel[2], %n[4*%i[2]+1], %n[4*%i[2]+2], %n[4*%i[2]+3])
+                            %pitch_bend[%channel[2]] := 2
+                            {# Increment the playhead }
+                            inc(%i[2])
+                            if (%i[2] >= %end[2])
+                                %state[2] := $PLAYER_DONE
+                            end if
+                    
+                        case $CUSTOM_COMMAND_CYCLE
+                            inc(%loop[2])
+                            %i[2] := %start[2]                 
+                            if (%i[2] >= %end[2])
+                                %state[2] := $PLAYER_DONE
+                            end if
+                    
+                        case $CUSTOM_COMMAND_ENDGROUP
+                            if (%trigger_held[2] >= 0)
+                                %is_endgroup[2] := 1
+                            end if
+                    end select
+                end if
+        
+                while (%state[2] = $PLAYER_DONE)
+                    {# Player waits until new sequence is selected }
+                    wait($long_time)
+                end while
+            end while
+        end select
+    end if
+ 
+    if ($MIDI_COMMAND = $MIDI_COMMAND_NOTE_OFF or ($MIDI_COMMAND = $MIDI_COMMAND_NOTE_ON and $MIDI_BYTE_1 = 0))
+        select ($stIndex)
+        case -1
+            {# Empty }
+        case 12
+            if (%is_endgroup[0] = 1 and %trigger_held[0] = 12)
+                %is_endgroup[0] := 0
+                {# Setting to the empty sequence here means we will clear existing notes, but immediately shift into }
+                {# $PLAYER_DONE. XXX: in the future, we should just push $PLAYER_CLEAR onto the stack }
+                %state[0] := $PLAYER_QUEUE
+                %i[0]   := 0
+                %end[0] := 0
+                stop_wait(%callback[0], 0)
+            end if
+            %trigger_held[0] := -1
+        case 13
+            if (%is_endgroup[0] = 1 and %trigger_held[0] = 13)
+                %is_endgroup[0] := 0
+                {# Setting to the empty sequence here means we will clear existing notes, but immediately shift into }
+                {# $PLAYER_DONE. XXX: in the future, we should just push $PLAYER_CLEAR onto the stack }
+                %state[0] := $PLAYER_QUEUE
+                %i[0]   := 0
+                %end[0] := 0
+                stop_wait(%callback[0], 0)
+            end if
+            %trigger_held[0] := -1
+        case 14
+            if (%is_endgroup[0] = 1 and %trigger_held[0] = 14)
+                %is_endgroup[0] := 0
+                {# Setting to the empty sequence here means we will clear existing notes, but immediately shift into }
+                {# $PLAYER_DONE. XXX: in the future, we should just push $PLAYER_CLEAR onto the stack }
+                %state[0] := $PLAYER_QUEUE
+                %i[0]   := 0
+                %end[0] := 0
+                stop_wait(%callback[0], 0)
+            end if
+            %trigger_held[0] := -1
+        case 15
+            if (%offs[0*128 + 65] >= 0)
+                set_midi(0, $MIDI_COMMAND_NOTE_OFF, 65, 0)
+                %offs[0*128 + 65] := $NO_CHOKE_GROUP
+            end if
+            if (%offs[0*128 + 72] >= 0)
+                set_midi(0, $MIDI_COMMAND_NOTE_OFF, 72, 0)
+                %offs[0*128 + 72] := $NO_CHOKE_GROUP
+            end if
+            if (%offs[0*128 + 77] >= 0)
+                set_midi(0, $MIDI_COMMAND_NOTE_OFF, 77, 0)
+                %offs[0*128 + 77] := $NO_CHOKE_GROUP
+            end if
+            if (%offs[0*128 + 79] >= 0)
+                set_midi(0, $MIDI_COMMAND_NOTE_OFF, 79, 0)
+                %offs[0*128 + 79] := $NO_CHOKE_GROUP
+            end if
+            if (%offs[0*128 + 81] >= 0)
+                set_midi(0, $MIDI_COMMAND_NOTE_OFF, 81, 0)
+                %offs[0*128 + 81] := $NO_CHOKE_GROUP
+            end if
+        case 16
+            if (%is_endgroup[1] = 1 and %trigger_held[1] = 16)
+                %is_endgroup[1] := 0
+                {# Setting to the empty sequence here means we will clear existing notes, but immediately shift into }
+                {# $PLAYER_DONE. XXX: in the future, we should just push $PLAYER_CLEAR onto the stack }
+                %state[1] := $PLAYER_QUEUE
+                %i[1]   := 0
+                %end[1] := 0
+                stop_wait(%callback[1], 0)
+            end if
+            %trigger_held[1] := -1
+        case 17
+            if (%is_endgroup[2] = 1 and %trigger_held[2] = 17)
+                %is_endgroup[2] := 0
+                {# Setting to the empty sequence here means we will clear existing notes, but immediately shift into }
+                {# $PLAYER_DONE. XXX: in the future, we should just push $PLAYER_CLEAR onto the stack }
+                %state[2] := $PLAYER_QUEUE
+                %i[2]   := 0
+                %end[2] := 0
+                stop_wait(%callback[2], 0)
+            end if
+            %trigger_held[2] := -1
+        end select
+    end if
+end on
+
+{# *** META *** }
+{
+pwd  = /Users/pchristopher/CeeGuitar,
+time = 2017-11-20 16:46:56
+}

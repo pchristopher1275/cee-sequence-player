@@ -1,0 +1,3 @@
+---
+label-config:
+   C-2_r2_c1: [['radius', 40], ['Em_shape', 0]]

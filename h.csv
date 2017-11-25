@@ -1,0 +1,10 @@
+0, 0, Header, 1, 1, 100
+1, 0, Start_track
+1, 0, Note_on_c, 1, 91, 81
+1, 50, Note_off_c, 1, 91, 0
+1, 100, Note_on_c, 1, 92, 82
+1, 200, Note_off_c, 1, 92, 0
+1, 200, Note_on_c, 1, 93, 83
+1, 400, Note_off_c, 1, 93, 0
+1, 800, End_track
+0, 0, End_of_file

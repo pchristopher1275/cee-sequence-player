@@ -1,0 +1,5 @@
+Time: 2017-10-24 09:42:12
+    cp seq+12.mid AM.0.12-48.mid
+    cp seq-12.mid AN.0.13-47.mid
+    cp seq.mid AO.0.14-46.mid
+
