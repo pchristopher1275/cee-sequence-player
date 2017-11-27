@@ -912,7 +912,6 @@ END
             if ($stVelocity > 127)
                 $stVelocity := 127
             end if
-            add_text_line($cons, "PETE " & $stVelocity & " " & [[BB1]] & "    " & $stVelocityDelta)
             set_midi([[CHANNEL]], $MIDI_COMMAND_NOTE_ON, [[BB1]], $stVelocity)
             %offs[[[CHANNEL]]*128 + [[BB1]]] := $NON_DYNAMIC_CHOKE_GROUP
 END
@@ -928,7 +927,6 @@ END
             [[ALL_STOP]]
             ## Non dynamic NoteOn
             $stVelocityDelta := real_to_int([[VELOCITY_RADIUS]]*int_to_real($MIDI_BYTE_2-64)/63.0)
-            add_text_line($cons, "velocity " & $MIDI_BYTE_1 & " " & [[VELOCITY_RADIUS]])
             [[NOTE_ON_ND]]
             [[CC_ND]]
 END

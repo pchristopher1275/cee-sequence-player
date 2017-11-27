@@ -3,6 +3,8 @@ use Getopt::Std;
 use Carp;
 my $MidiCsvPath = "$ENV{HOME}/CeeGuitar/midicsv-1.1/midicsv";
 
+my @NoteSymbols = qw/ C   C#  D  D#  E   F   F#  G  G#  A A# B  /;
+
 my %KnownConfigFields = (
     ## import options
     sn => {name=>"SliceNote", arg=>"Integer specifies which note to consider the split note"},
@@ -167,8 +169,6 @@ sub dump_midi {
             push @n, [@$row] if $start <= $row->[0] && $row->[0] < $end;
         }
     }
-
-
     
     my $divider_delta = 1.0;
     my $next = 0;
@@ -182,7 +182,8 @@ sub dump_midi {
         if (defined($row->[4])){
             $b = sprintf "%.2f", $row->[4];
         }
-        printf "%15.2f%15s%15d%15d%15s\n", $t, @{$row}[1,2,3], $b;
+        my $nname = $NoteSymbols[$row->[2] % 12] . int($row->[2]/12-2);
+        printf "%15.2f%15s%15d%15s%15d%15s\n", $t, @{$row}[1,2], $nname, $row->[3], $b;
     }
 }
 

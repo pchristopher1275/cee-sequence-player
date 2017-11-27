@@ -551,7 +551,6 @@ $opFunctions{pass} = \&pass;
 sub radius {
     my ($arg_list, $kvs) = @_;
     flag_bad_arg_count("radius", 1, size_first_ref(@_));
-    printf "FOO BAR BAZ $arg_list->[0]\n";
     $kvs->{radius} = $arg_list->[0];
     sanity_radius($kvs->{radius});
     return ();
@@ -684,7 +683,7 @@ sub power2 {
     flag_bad_arg_count("power2", 1, size_first_ref(@_));
     my ($root) = @{$_[0]};
     $root = note_from_text($root);
-    my @descriptors = (raw_note($root), raw_note($root+7));
+    return (raw_note($root), raw_note($root+7));
 }
 $opFunctions{power2} = \&power2;
 
@@ -692,7 +691,7 @@ sub power3 {
     flag_bad_arg_count("power3", 1, size_first_ref(@_));
     my ($root) = @{$_[0]};
     $root = note_from_text($root);
-    my @descriptors = (raw_note($root), raw_note($root+7), raw_note($root+12));
+    return (raw_note($root), raw_note($root+7), raw_note($root+12));
 }
 $opFunctions{power3} = \&power3;
 
@@ -734,8 +733,48 @@ sub in_penta {
 }
 $opFunctions{in_penta} = \&in_penta;
 
+sub third_pair {
+    flag_bad_arg_count("third_pair", 2, size_first_ref(@_));
+    my ($root, $major_or_minor) = @{$_[0]};
+    $root = note_from_text($root);
+    if ($major_or_minor eq 'maj') {
+        return (raw_note($root), raw_note($root+4));
+    } elsif ($major_or_minor eq 'min') {
+        return (raw_note($root), raw_note($root+3));
+    } else {
+        confess "Bad argument to major_or_minor: $major_or_minor";
+    }
+}
+$opFunctions{third_pair} = \&third_pair;
 
+sub forth_pair {
+    flag_bad_arg_count("forth_pair", 1, size_first_ref(@_));
+    my ($root) = @{$_[0]};
+    $root = note_from_text($root);
+    return (raw_note($root), raw_note($root+5));
+}
+$opFunctions{forth_pair} = \&forth_pair;
+$opFunctions{fifth_pair} = \&power2;
 
+## This is the E-major shape. This will only sound familiar when the root is on low-E or A string.
+## The inverted chord is (5th, root, major 3rd)
+sub standard_triple {
+    flag_bad_arg_count("standard_triple", 1, size_first_ref(@_));
+    my ($root) = @{$_[0]};
+    $root = note_from_text($root);
+    return (raw_note($root-5), raw_note($root), raw_note($root+4));   
+}
+$opFunctions{standard_triple} = \&standard_triple;
+
+## This is a bar of the three high strings. It ends up playing an inverted chord given by (3rd, 5th, root)
+## where the 3rd is the lowest tone. The bar note names the chord, and it's the note played on the high-E string. 
+sub bar_triple {
+    flag_bad_arg_count("bar_triple", 1, size_first_ref(@_));
+    my ($bar_note) = @{$_[0]};
+    $bar_note = note_from_text($bar_note);
+    return (raw_note($bar_note-9), raw_note($bar_note-5), raw_note($bar_note));      
+}
+$opFunctions{bar_triple} = \&bar_triple;
 
 sub cc {
     flag_bad_arg_count("cc", 2, size_first_ref(@_));
